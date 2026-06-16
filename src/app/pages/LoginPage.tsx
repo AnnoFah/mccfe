@@ -6,13 +6,17 @@ import { Eye, EyeOff, Building2, Lock, Mail, AlertCircle } from "lucide-react";
 const BG_IMAGE = "https://images.unsplash.com/photo-1632012993419-e2341a8a656e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxNYWxhbmclMjBjcmVhdGl2ZSUyMGNlbnRlciUyMG1vZGVybiUyMGJ1aWxkaW5nfGVufDF8fHx8MTc3NjIzOTg3OHww&ixlib=rb-4.1.0&q=80&w=1080";
 
 export function LoginPage() {
-  const { login, isAuthenticated, user } = useAuth();
+  const { login, isAuthenticated, user, isLoading } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-8 h-8 border-4 border-[#1e3263]/30 border-t-[#1e3263] rounded-full animate-spin" /></div>;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={user?.role === "admin" ? "/admin" : "/"} replace />;
@@ -23,7 +27,7 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     await new Promise((r) => setTimeout(r, 800));
-    const success = login(email, password);
+    const success = await login(email, password);
     setLoading(false);
     if (success) {
       const savedUser = JSON.parse(sessionStorage.getItem("mcc_user") || "{}");

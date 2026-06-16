@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAttendance } from "../context/AttendanceContext";
 import { Search, Users, Plus, Edit3, Trash2, ChevronLeft, ChevronRight, X } from "lucide-react";
 
@@ -13,56 +13,76 @@ interface Employee {
   status: "aktif" | "nonaktif";
 }
 
-const INITIAL_EMPLOYEES: Employee[] = [
-  { id: "1", name: "Admin MCC", email: "admin@mcc.id", department: "Manajemen", position: "Manajer/SPV", phone: "081234567890", joinDate: "2020-01-01", status: "aktif" },
-  { id: "2", name: "Budi Santoso", email: "budi@mcc.id", department: "Kreatif", position: "Desainer Grafis", phone: "082345678901", joinDate: "2021-03-15", status: "aktif" },
-  { id: "3", name: "Siti Rahma", email: "siti@mcc.id", department: "Event", position: "Event Coordinator", phone: "083456789012", joinDate: "2021-07-01", status: "aktif" },
-  { id: "4", name: "Ahmad Fauzi", email: "ahmad@mcc.id", department: "IT", position: "Web Developer", phone: "084567890123", joinDate: "2022-01-10", status: "aktif" },
-  { id: "5", name: "Dewi Kusuma", email: "dewi@mcc.id", department: "Marketing", position: "Marketing Specialist", phone: "085678901234", joinDate: "2022-04-20", status: "aktif" },
-  { id: "6", name: "Rizal Pratama", email: "rizal@mcc.id", department: "Keuangan", position: "Akuntan", phone: "086789012345", joinDate: "2020-08-05", status: "aktif" },
-  { id: "7", name: "Nurul Hidayah", email: "nurul@mcc.id", department: "Kreatif", position: "Fotografer", phone: "087890123456", joinDate: "2023-02-01", status: "aktif" },
-  { id: "8", name: "Hendra Wijaya", email: "hendra@mcc.id", department: "Event", position: "Event Staff", phone: "088901234567", joinDate: "2023-06-15", status: "aktif" },
-];
-
 const DEPARTMENTS = ["Manajemen", "Kreatif", "Event", "IT", "Marketing", "Keuangan", "Operasional"];
 
 const ITEMS_PER_PAGE = 6;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
 export function AdminEmployees() {
   const { records } = useAttendance();
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [form, setForm] = useState<Partial<Employee>>({
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Notice we add password for new employees
+  const [form, setForm] = useState<Partial<Employee> & { password?: string }>({
     name: "", email: "", department: "Kreatif", position: "", phone: "", joinDate: "", status: "aktif",
   });
 
-  const today = new Date().toISOString().split("T")[0];
+  const fetchEmployees = async () => {
+    setIsLoading(true);
+    const token = sessionStorage.getItem("mcc_token");
+    if (!token) return;
+    try {
+      const qs = new URLSearchParams({
+        page: page.toString(),
+        limit: ITEMS_PER_PAGE.toString(),
+        ...(search && { search }),
+        ...(deptFilter !== "all" && { department: deptFilter }),
+      });
+      const res = await fetch(`${API_URL}/employees?${qs}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mapped = data.data.map((e: any) => ({
+          id: e.id,
+          name: e.fullName,
+          email: e.user?.email || "",
+          department: e.department,
+          position: e.position,
+          phone: e.phone,
+          joinDate: new Date(e.joinDate).toISOString().split("T")[0],
+          status: e.user?.isActive ? "aktif" : "nonaktif",
+        }));
+        setEmployees(mapped);
+        setTotalPages(data.pagination.totalPages || 1);
+      }
+    } catch (e) {
+      console.error("Failed to fetch employees", e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [page, search, deptFilter]);
+
   const getLastAttendance = (id: string) => {
     const rec = records.filter((r) => r.userId === id).sort((a, b) => b.date.localeCompare(a.date))[0];
     return rec || null;
   };
 
-  const filtered = employees.filter((e) => {
-    const matchSearch =
-      !search ||
-      e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.email.toLowerCase().includes(search.toLowerCase()) ||
-      e.position.toLowerCase().includes(search.toLowerCase());
-    const matchDept = deptFilter === "all" || e.department === deptFilter;
-    return matchSearch && matchDept;
-  });
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
   const openAdd = () => {
     setEditEmployee(null);
-    setForm({ name: "", email: "", department: "Kreatif", position: "", phone: "", joinDate: "", status: "aktif" });
+    setForm({ name: "", email: "", department: "Kreatif", position: "", phone: "", joinDate: new Date().toISOString().split("T")[0], status: "aktif" });
     setShowModal(true);
   };
 
@@ -72,21 +92,78 @@ export function AdminEmployees() {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name || !form.email || !form.position) return;
-    if (editEmployee) {
-      setEmployees((prev) => prev.map((e) => (e.id === editEmployee.id ? { ...e, ...form } as Employee : e)));
-    } else {
-      setEmployees((prev) => [
-        ...prev,
-        { ...form, id: `${Date.now()}` } as Employee,
-      ]);
+    const token = sessionStorage.getItem("mcc_token");
+    
+    try {
+      if (editEmployee) {
+        // Edit logic
+        const res = await fetch(`${API_URL}/employees/${editEmployee.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            fullName: form.name,
+            phone: form.phone,
+            department: form.department,
+            position: form.position,
+            // the backend might not support updating email/status directly in employee edit, but we pass it anyway
+          })
+        });
+        if (res.ok) {
+          fetchEmployees();
+          setShowModal(false);
+        } else {
+          const err = await res.json();
+          alert(err.message || "Gagal mengubah data");
+        }
+      } else {
+        // Create logic
+        const employeeCode = "MCC" + Math.floor(1000 + Math.random() * 9000); // Random employee code
+        const res = await fetch(`${API_URL}/employees`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            email: form.email,
+            password: form.password || "mcc123", // default password
+            fullName: form.name,
+            employeeCode,
+            phone: form.phone || "-",
+            department: form.department,
+            position: form.position,
+            joinDate: new Date(form.joinDate || Date.now()).toISOString(),
+          })
+        });
+        if (res.ok) {
+          fetchEmployees();
+          setShowModal(false);
+        } else {
+          const err = await res.json();
+          alert(err.message || "Gagal menambah data");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Terjadi kesalahan sistem");
     }
-    setShowModal(false);
   };
 
-  const handleDelete = (id: string) => {
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
+  const handleDelete = async (id: string) => {
+    const token = sessionStorage.getItem("mcc_token");
+    try {
+      const res = await fetch(`${API_URL}/employees/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchEmployees();
+      } else {
+        const err = await res.json();
+        alert(err.message || "Gagal menghapus data");
+      }
+    } catch (e) {
+      console.error(e);
+    }
     setDeleteConfirm(null);
   };
 
@@ -99,122 +176,142 @@ export function AdminEmployees() {
   };
 
   return (
-    <div className="p-4 lg:p-6 space-y-5">
+    <div className="p-4 lg:p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Kelola Karyawan</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{employees.filter((e) => e.status === "aktif").length} karyawan aktif</p>
+          <h2 className="text-xl font-bold text-gray-800">Manajemen Karyawan</h2>
+          <p className="text-sm text-gray-500 mt-1">Kelola data karyawan dan lihat status terakhir mereka</p>
         </div>
         <button
           onClick={openAdd}
-          className="flex items-center gap-2 bg-[#1e3263] hover:bg-[#162550] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm"
+          className="flex items-center gap-2 bg-[#1e3263] text-white px-4 py-2 rounded-xl hover:bg-[#2d4a8c] transition-colors shadow-sm"
         >
           <Plus className="w-4 h-4" />
-          Tambah Karyawan
+          <span>Tambah Karyawan</span>
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Cari nama, email, jabatan..."
+            placeholder="Cari nama, email, atau posisi..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
           />
         </div>
         <select
           value={deptFilter}
-          onChange={(e) => { setDeptFilter(e.target.value); setPage(1); }}
-          className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20 bg-white"
+          onChange={(e) => {
+            setDeptFilter(e.target.value);
+            setPage(1);
+          }}
+          className="px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white"
         >
           <option value="all">Semua Departemen</option>
-          {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+          {DEPARTMENTS.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
         </select>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Karyawan</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Departemen</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Kontak</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Bergabung</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Absensi Hari Ini</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Aksi</th>
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50/50 text-gray-500 text-xs uppercase font-medium">
+              <tr>
+                <th className="px-6 py-4">Karyawan</th>
+                <th className="px-6 py-4">Kontak</th>
+                <th className="px-6 py-4">Status & Login</th>
+                <th className="px-6 py-4">Absen Terakhir</th>
+                <th className="px-6 py-4 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {paginated.length === 0 ? (
+            <tbody className="divide-y divide-gray-100">
+              {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-gray-400 text-sm">
-                    <Users className="w-10 h-10 mx-auto mb-2 text-gray-200" />
-                    Tidak ada karyawan ditemukan
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                    <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    Memuat data...
+                  </td>
+                </tr>
+              ) : employees.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                    Tidak ada karyawan ditemukan.
                   </td>
                 </tr>
               ) : (
-                paginated.map((emp) => {
+                employees.map((emp) => {
                   const lastAtt = getLastAttendance(emp.id);
-                  const todayAtt = records.find((r) => r.userId === emp.id && r.date === today);
                   return (
-                    <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-3.5">
+                    <tr key={emp.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#1e3263] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
                             {emp.name.charAt(0)}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-800">{emp.name}</p>
-                            <p className="text-xs text-gray-500">{emp.email}</p>
+                            <div className="font-semibold text-gray-800">{emp.name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {emp.position} • {emp.department}
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <p className="text-sm text-gray-800">{emp.department}</p>
-                        <p className="text-xs text-gray-500">{emp.position}</p>
+                      <td className="px-6 py-4 text-gray-600">
+                        <div>{emp.email}</div>
+                        <div className="text-xs text-gray-400">{emp.phone}</div>
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-600">{emp.phone}</td>
-                      <td className="px-5 py-3.5 text-sm text-gray-600">
-                        {new Date(emp.joinDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1.5">
+                          <span
+                            className={`inline-flex w-max px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${
+                              emp.status === "aktif"
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : "bg-red-50 text-red-700 border-red-200"
+                            }`}
+                          >
+                            {emp.status === "aktif" ? "Aktif" : "Nonaktif"}
+                          </span>
+                          <span className="text-[10px] text-gray-400">Join: {emp.joinDate}</span>
+                        </div>
                       </td>
-                      <td className="px-5 py-3.5">
-                        {todayAtt ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[todayAtt.status] || "bg-gray-300"}`} />
-                            <span className="text-xs text-gray-700">
-                              {todayAtt.checkIn ? todayAtt.checkIn : todayAtt.status}
-                            </span>
+                      <td className="px-6 py-4">
+                        {lastAtt ? (
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className={`w-2 h-2 rounded-full ${STATUS_DOT[lastAtt.status] || "bg-gray-400"}`} />
+                              <span className="font-medium capitalize text-gray-700">{lastAtt.status}</span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {lastAtt.date} {lastAtt.checkIn && `• ${lastAtt.checkIn}`}
+                            </div>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Belum absen</span>
+                          <span className="text-gray-400 text-xs italic">Belum ada absen</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                          emp.status === "aktif" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                        }`}>
-                          {emp.status === "aktif" ? "Aktif" : "Non-Aktif"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-1">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openEdit(emp)}
-                            className="p-1.5 text-gray-400 hover:text-[#1e3263] hover:bg-blue-50 rounded-lg transition"
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(emp.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Hapus"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -229,121 +326,130 @@ export function AdminEmployees() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              {(page - 1) * ITEMS_PER_PAGE + 1}–{Math.min(page * ITEMS_PER_PAGE, filtered.length)} dari {filtered.length}
-            </p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 rounded-lg text-xs font-medium transition ${p === page ? "bg-[#1e3263] text-white" : "text-gray-600 hover:bg-gray-100"}`}>{p}</button>
-              ))}
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-sm text-gray-500">
+            Halaman <span className="font-medium text-gray-800">{page}</span> dari {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="font-bold text-gray-800">{editEmployee ? "Edit Karyawan" : "Tambah Karyawan Baru"}</h3>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition">
-                <X className="w-4 h-4 text-gray-500" />
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#1e3263]" />
+                {editEmployee ? "Edit Karyawan" : "Tambah Karyawan"}
+              </h3>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Nama Lengkap *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Nama Lengkap</label>
                   <input
-                    value={form.name || ""}
+                    type="text"
+                    value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Nama lengkap"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Email *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
                   <input
                     type="email"
-                    value={form.email || ""}
+                    value={form.email}
+                    disabled={!!editEmployee}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="email@mcc.id"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                  />
+                </div>
+                {!editEmployee && (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Password Baru (Default: mcc123)</label>
+                    <input
+                      type="text"
+                      value={form.password || ""}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      placeholder="mcc123"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Telepon</label>
+                  <input
+                    type="text"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Departemen</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tanggal Bergabung</label>
+                  <input
+                    type="date"
+                    value={form.joinDate}
+                    disabled={!!editEmployee}
+                    onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Departemen</label>
                   <select
-                    value={form.department || ""}
+                    value={form.department}
                     onChange={(e) => setForm({ ...form, department: e.target.value })}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20 bg-white"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white"
                   >
-                    {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                    {DEPARTMENTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Jabatan *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Posisi</label>
                   <input
-                    value={form.position || ""}
+                    type="text"
+                    value={form.position}
                     onChange={(e) => setForm({ ...form, position: e.target.value })}
-                    placeholder="Jabatan"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">No. Telepon</label>
-                  <input
-                    value={form.phone || ""}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="08xxxxxxxxxx"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Tanggal Bergabung</label>
-                  <input
-                    type="date"
-                    value={form.joinDate || ""}
-                    onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3263]/20"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Status</label>
-                  <div className="flex gap-3">
-                    {(["aktif", "nonaktif"] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setForm({ ...form, status: s })}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition ${
-                          form.status === s
-                            ? s === "aktif" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-400 bg-gray-50 text-gray-700"
-                            : "border-gray-200 text-gray-500"
-                        }`}
-                      >
-                        {s === "aktif" ? "✅ Aktif" : "⏸ Non-Aktif"}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowModal(false)} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition">Batal</button>
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Batal
+                </button>
                 <button
                   onClick={handleSave}
-                  disabled={!form.name || !form.email || !form.position}
-                  className="flex-1 py-3 bg-[#1e3263] text-white rounded-xl text-sm font-medium hover:bg-[#162550] disabled:opacity-50 transition"
+                  className="px-4 py-2 text-sm font-medium bg-[#1e3263] text-white rounded-lg hover:bg-[#2d4a8c] transition-colors"
                 >
-                  {editEmployee ? "Simpan Perubahan" : "Tambah Karyawan"}
+                  Simpan Data
                 </button>
               </div>
             </div>
@@ -351,18 +457,30 @@ export function AdminEmployees() {
         </div>
       )}
 
-      {/* Delete Confirm */}
+      {/* Delete Confirm Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6 text-red-600" />
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-8 h-8" />
             </div>
-            <h3 className="font-bold text-gray-800 mb-2">Hapus Karyawan?</h3>
-            <p className="text-sm text-gray-500 mb-5">Data karyawan ini akan dihapus secara permanen.</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Hapus Karyawan?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Data karyawan ini akan dihapus secara permanen beserta data absensinya. Anda yakin?
+            </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Batal</button>
-              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-3 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700">Hapus</button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 text-sm font-medium border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors"
+              >
+                Ya, Hapus
+              </button>
             </div>
           </div>
         </div>

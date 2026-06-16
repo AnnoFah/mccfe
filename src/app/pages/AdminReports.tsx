@@ -100,8 +100,21 @@ export function AdminReports() {
   const totalWorkHours = filtered.reduce((acc, r) => acc + (r.workHours || 0), 0);
 
   const handleExport = (type: string) => {
-    // Simulate export
-    setExportSuccess(`✅ File ${type} berhasil diekspor!`);
+    if (type === "Excel (.xlsx)") {
+      const headers = ["Nama,Departemen,Posisi,Tanggal,Check In,Check Out,Status,Total Jam Kerja"];
+      const rows = filtered.map(r => 
+        `"${r.userName}","${r.department}","${r.position}","${r.date}","${r.checkIn || "-"}","${r.checkOut || "-"}","${r.status}","${r.workHours || 0}"`
+      );
+      const csvContent = "data:text/csv;charset=utf-8," + headers.concat(rows).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `Laporan_Absensi_MCC_${filterMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    setExportSuccess(`✅ File ${type.includes("Excel") ? "CSV" : type} berhasil diekspor!`);
     setTimeout(() => setExportSuccess(""), 3000);
   };
 

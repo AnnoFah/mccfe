@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 
-export type UserRole = "admin" | "employee";
+export type UserRole = "admin" | "karyawan";
 
 export interface User {
   id: string;
@@ -14,70 +14,89 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const MOCK_USERS = [
-  {
-    id: "1",
-    name: "Admin MCC",
-    email: "admin@mcc.id",
-    password: "admin123",
-    role: "admin" as UserRole,
-    department: "Manajemen",
-    position: "Manajer/SPV",
-  },
-  {
-    id: "2",
-    name: "Budi Santoso",
-    email: "budi@mcc.id",
-    password: "karyawan123",
-    role: "employee" as UserRole,
-    department: "Kreatif",
-    position: "Desainer Grafis",
-  },
-  {
-    id: "3",
-    name: "Siti Rahma",
-    email: "siti@mcc.id",
-    password: "karyawan123",
-    role: "employee" as UserRole,
-    department: "Event",
-    position: "Event Coordinator",
-  },
-];
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = sessionStorage.getItem("mcc_user");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = (email: string, password: string): boolean => {
-    const found = MOCK_USERS.find(
-      (u) => u.email === email && u.password === password
-    );
-    if (found) {
-      const { password: _, ...userData } = found;
-      setUser(userData);
-      sessionStorage.setItem("mcc_user", JSON.stringify(userData));
-      return true;
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = sessionStorage.getItem("mcc_token");
+      if (token) {
+        try {
+          const res = await fetch(`${API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const u = data.data;
+            setUser({
+              id: u.id,
+              email: u.email,
+              role: u.role.name === "admin" ? "admin" : "karyawan",
+              name: u.employee?.fullName || "Admin MCC",
+              department: u.employee?.department || "Manajemen",
+              position: u.employee?.position || "Administrator",
+              avatar: u.employee?.avatarUrl || undefined,
+            });
+          } else {
+            sessionStorage.removeItem("mcc_token");
+          }
+        } catch (e) {
+          console.error("Failed to load profile", e);
+        }
+      }
+      setIsLoading(false);
+    };
+    initAuth();
+  }, []);
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const { accessToken, user: u } = data.data;
+        sessionStorage.setItem("mcc_token", accessToken);
+        setUser({
+          id: u.id,
+          email: u.email,
+          role: u.role === "admin" ? "admin" : "karyawan",
+          name: u.employee?.fullName || "Admin MCC",
+          department: u.employee?.department || "Manajemen",
+          position: u.employee?.position || "Administrator",
+          avatar: u.employee?.avatarUrl || undefined,
+        });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Login error", e);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
     setUser(null);
-    sessionStorage.removeItem("mcc_user");
+    sessionStorage.removeItem("mcc_token");
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, isAuthenticated: !!user }}
+      value={{ user, login, logout, isAuthenticated: !!user, isLoading }}
     >
       {children}
     </AuthContext.Provider>

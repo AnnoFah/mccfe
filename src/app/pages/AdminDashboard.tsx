@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useAttendance } from "../context/AttendanceContext";
 import {
   Users,
@@ -33,10 +34,30 @@ const PIE_COLORS = ["#22c55e", "#eab308", "#3b82f6", "#a855f7", "#ef4444"];
 
 export function AdminDashboard() {
   const { records } = useAttendance();
+  const [totalEmployees, setTotalEmployees] = useState(0);
+
+  useEffect(() => {
+    const fetchEmp = async () => {
+      const token = sessionStorage.getItem("mcc_token");
+      if (!token) return;
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+        const res = await fetch(`${API_URL}/employees?limit=1`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTotalEmployees(data.pagination?.total || data.data?.length || 0);
+        }
+      } catch (e) {
+        console.error("Failed to load employees count", e);
+      }
+    };
+    fetchEmp();
+  }, []);
+
   const today = new Date().toISOString().split("T")[0];
   const todayRecords = records.filter((r) => r.date === today);
-
-  const totalEmployees = 8;
   const hadirToday = todayRecords.filter((r) => r.status === "hadir" || r.status === "terlambat").length;
   const terlambatToday = todayRecords.filter((r) => r.status === "terlambat").length;
   const izinToday = todayRecords.filter((r) => r.status === "izin").length;
