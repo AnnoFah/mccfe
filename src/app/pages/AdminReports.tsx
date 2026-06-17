@@ -1,8 +1,4 @@
 import { useState } from "react";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const jsPDF = require("jspdf").jsPDF;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const autoTable = require("jspdf-autotable").default;
 import { useAttendance } from "../context/AttendanceContext";
 import {
   Download,
@@ -120,8 +116,11 @@ export function AdminReports() {
     setTimeout(() => setExportSuccess(""), 3000);
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     try {
+      const { jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       const monthName = new Date(filterMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -145,18 +144,21 @@ export function AdminReports() {
       doc.text("Ringkasan:", 14, 35);
       doc.setFont("helvetica", "normal");
       doc.text(
-        `Hadir: ${totalHadir}  |  Terlambat: ${totalTerlambat}  |  Izin: ${totalIzin}  |  Sakit: ${totalSakit}  |  Alpha: ${totalAlpha}  |  Total Data: ${filtered.length}`,
+        `Hadir: ${totalHadir}  |  Terlambat: ${totalTerlambat}  |  Izin: ${totalIzin}  |  Sakit: ${totalSakit}  |  Alpha: ${totalAlpha}  |  Total: ${filtered.length} data`,
         14, 41
       );
 
       // ── Tabel Data Absensi ────────────────────────────────
-      const head = [["No", "Nama Karyawan", "Departemen", "Posisi", "Tanggal", "Jam Masuk", "Jam Pulang", "Status", "Jam Kerja"]];
+      const head = [[
+        "No", "Nama Karyawan", "Departemen", "Posisi",
+        "Tanggal", "Jam Masuk", "Jam Pulang", "Status", "Jam Kerja"
+      ]];
       const body = filtered.map((r, i) => [
-        i + 1,
+        String(i + 1),
         r.userName || "-",
         r.department || "-",
         r.position || "-",
-        r.date,
+        r.date || "-",
         r.checkIn || "-",
         r.checkOut || "-",
         r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : "-",
@@ -167,12 +169,7 @@ export function AdminReports() {
         startY: 46,
         head,
         body,
-        headStyles: {
-          fillColor: [30, 50, 99],
-          textColor: 255,
-          fontSize: 8,
-          fontStyle: "bold",
-        },
+        headStyles: { fillColor: [30, 50, 99], textColor: 255, fontSize: 8, fontStyle: "bold" },
         bodyStyles: { fontSize: 7.5, textColor: [40, 40, 40] },
         alternateRowStyles: { fillColor: [245, 247, 255] },
         columnStyles: {
@@ -188,11 +185,11 @@ export function AdminReports() {
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(7);
-        doc.setTextColor(150);
+        doc.setTextColor(150, 150, 150);
         doc.text(
-          `Dicetak pada: ${new Date().toLocaleDateString("id-ID")} — Halaman ${i} dari ${totalPages}`,
+          `Dicetak: ${new Date().toLocaleDateString("id-ID")}  |  Halaman ${i} dari ${totalPages}`,
           pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 6,
+          doc.internal.pageSize.getHeight() - 5,
           { align: "center" }
         );
       }
@@ -201,7 +198,7 @@ export function AdminReports() {
       setExportSuccess("✅ File PDF berhasil diunduh!");
     } catch (err) {
       console.error("PDF Export Error:", err);
-      alert("Gagal membuat PDF. Cek console untuk detail error.");
+      alert(`Gagal membuat PDF: ${err instanceof Error ? err.message : String(err)}`);
     }
     setTimeout(() => setExportSuccess(""), 3000);
   };
