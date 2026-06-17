@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useAttendance } from "../context/AttendanceContext";
 import {
   Download,
-  FileText,
   BarChart3,
   Calendar,
   Filter,
@@ -116,92 +115,6 @@ export function AdminReports() {
     setTimeout(() => setExportSuccess(""), 3000);
   };
 
-  const handleExportPDF = async () => {
-    try {
-      const { jsPDF } = await import("jspdf");
-      const { default: autoTable } = await import("jspdf-autotable");
-
-      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-      const monthName = new Date(filterMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
-      const pageWidth = doc.internal.pageSize.getWidth();
-
-      // ── Kop Surat / Header ─────────────────────────────────
-      doc.setFillColor(30, 50, 99);
-      doc.rect(0, 0, pageWidth, 28, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("LAPORAN ABSENSI KARYAWAN", pageWidth / 2, 12, { align: "center" });
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text("Malang Creative Center (MCC)", pageWidth / 2, 19, { align: "center" });
-      doc.text(`Periode: ${monthName}`, pageWidth / 2, 25, { align: "center" });
-
-      // ── Ringkasan Statistik ────────────────────────────────
-      doc.setTextColor(50, 50, 50);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Ringkasan:", 14, 35);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        `Hadir: ${totalHadir}  |  Terlambat: ${totalTerlambat}  |  Izin: ${totalIzin}  |  Sakit: ${totalSakit}  |  Alpha: ${totalAlpha}  |  Total: ${filtered.length} data`,
-        14, 41
-      );
-
-      // ── Tabel Data Absensi ────────────────────────────────
-      const head = [[
-        "No", "Nama Karyawan", "Departemen", "Posisi",
-        "Tanggal", "Jam Masuk", "Jam Pulang", "Status", "Jam Kerja"
-      ]];
-      const body = filtered.map((r, i) => [
-        String(i + 1),
-        r.userName || "-",
-        r.department || "-",
-        r.position || "-",
-        r.date || "-",
-        r.checkIn || "-",
-        r.checkOut || "-",
-        r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : "-",
-        r.workHours ? `${Number(r.workHours).toFixed(1)} jam` : "-",
-      ]);
-
-      autoTable(doc, {
-        startY: 46,
-        head,
-        body,
-        headStyles: { fillColor: [30, 50, 99], textColor: 255, fontSize: 8, fontStyle: "bold" },
-        bodyStyles: { fontSize: 7.5, textColor: [40, 40, 40] },
-        alternateRowStyles: { fillColor: [245, 247, 255] },
-        columnStyles: {
-          0: { cellWidth: 10, halign: "center" },
-          7: { halign: "center" },
-          8: { halign: "center" },
-        },
-        margin: { left: 10, right: 10 },
-      });
-
-      // ── Footer ─────────────────────────────────────────────
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        doc.text(
-          `Dicetak: ${new Date().toLocaleDateString("id-ID")}  |  Halaman ${i} dari ${totalPages}`,
-          pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 5,
-          { align: "center" }
-        );
-      }
-
-      doc.save(`Laporan_Absensi_MCC_${filterMonth}.pdf`);
-      setExportSuccess("✅ File PDF berhasil diunduh!");
-    } catch (err) {
-      console.error("PDF Export Error:", err);
-      alert(`Gagal membuat PDF: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    setTimeout(() => setExportSuccess(""), 3000);
-  };
 
   const monthName = new Date(filterMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 
@@ -227,13 +140,6 @@ export function AdminReports() {
           >
             <Download className="w-4 h-4" />
             Export Excel
-          </button>
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm"
-          >
-            <FileText className="w-4 h-4" />
-            Export PDF
           </button>
         </div>
       </div>
