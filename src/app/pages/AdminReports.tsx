@@ -1,6 +1,8 @@
 import { useState } from "react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const jsPDF = require("jspdf").jsPDF;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const autoTable = require("jspdf-autotable").default;
 import { useAttendance } from "../context/AttendanceContext";
 import {
   Download,
@@ -119,100 +121,88 @@ export function AdminReports() {
   };
 
   const handleExportPDF = () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const monthName = new Date(filterMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
-    const pageWidth = doc.internal.pageSize.getWidth();
+    try {
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const monthName = new Date(filterMonth + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+      const pageWidth = doc.internal.pageSize.getWidth();
 
-    // ── Kop Surat / Header ─────────────────────────────────
-    doc.setFillColor(30, 50, 99); // Warna biru MCC
-    doc.rect(0, 0, pageWidth, 28, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("LAPORAN ABSENSI KARYAWAN", pageWidth / 2, 12, { align: "center" });
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("Malang Creative Center (MCC)", pageWidth / 2, 19, { align: "center" });
-    doc.text(`Periode: ${monthName}`, pageWidth / 2, 25, { align: "center" });
+      // ── Kop Surat / Header ─────────────────────────────────
+      doc.setFillColor(30, 50, 99);
+      doc.rect(0, 0, pageWidth, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("LAPORAN ABSENSI KARYAWAN", pageWidth / 2, 12, { align: "center" });
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Malang Creative Center (MCC)", pageWidth / 2, 19, { align: "center" });
+      doc.text(`Periode: ${monthName}`, pageWidth / 2, 25, { align: "center" });
 
-    // ── Ringkasan Statistik ────────────────────────────────
-    doc.setTextColor(50, 50, 50);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.text("Ringkasan:", 14, 35);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Hadir: ${totalHadir}  |  Terlambat: ${totalTerlambat}  |  Izin: ${totalIzin}  |  Sakit: ${totalSakit}  |  Alpha: ${totalAlpha}  |  Total Data: ${filtered.length}`, 14, 41);
-
-    // ── Tabel Data Absensi ────────────────────────────────
-    const tableColumns = [
-      { header: "No", dataKey: "no" },
-      { header: "Nama Karyawan", dataKey: "nama" },
-      { header: "Departemen", dataKey: "dept" },
-      { header: "Posisi", dataKey: "posisi" },
-      { header: "Tanggal", dataKey: "tanggal" },
-      { header: "Jam Masuk", dataKey: "masuk" },
-      { header: "Jam Pulang", dataKey: "pulang" },
-      { header: "Status", dataKey: "status" },
-      { header: "Jam Kerja", dataKey: "jam" },
-    ];
-
-    const tableRows = filtered.map((r, i) => ({
-      no: i + 1,
-      nama: r.userName || "-",
-      dept: r.department || "-",
-      posisi: r.position || "-",
-      tanggal: r.date,
-      masuk: r.checkIn || "-",
-      pulang: r.checkOut || "-",
-      status: r.status.charAt(0).toUpperCase() + r.status.slice(1),
-      jam: r.workHours ? `${r.workHours.toFixed(1)} jam` : "-",
-    }));
-
-    autoTable(doc, {
-      startY: 46,
-      columns: tableColumns,
-      body: tableRows,
-      headStyles: {
-        fillColor: [30, 50, 99],
-        textColor: 255,
-        fontSize: 8,
-        fontStyle: "bold",
-      },
-      bodyStyles: { fontSize: 7.5, textColor: [40, 40, 40] },
-      alternateRowStyles: { fillColor: [245, 247, 255] },
-      columnStyles: {
-        no: { cellWidth: 10, halign: "center" },
-        status: { halign: "center" },
-        jam: { halign: "center" },
-      },
-      didDrawCell: (data) => {
-        if (data.column.dataKey === "status" && data.section === "body") {
-          const val = (data.cell.raw as string).toLowerCase();
-          if (val === "hadir") doc.setTextColor(21, 128, 61);
-          else if (val === "terlambat") doc.setTextColor(161, 98, 7);
-          else if (val === "izin") doc.setTextColor(29, 78, 216);
-          else if (val === "sakit") doc.setTextColor(109, 40, 217);
-          else if (val === "alpha") doc.setTextColor(185, 28, 28);
-        }
-      },
-    });
-
-    // ── Footer ─────────────────────────────────────────────
-    const pageCount = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7);
-      doc.setTextColor(150);
+      // ── Ringkasan Statistik ────────────────────────────────
+      doc.setTextColor(50, 50, 50);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Ringkasan:", 14, 35);
+      doc.setFont("helvetica", "normal");
       doc.text(
-        `Dicetak pada: ${new Date().toLocaleDateString("id-ID", { dateStyle: "long" })} — Halaman ${i} dari ${pageCount}`,
-        pageWidth / 2,
-        doc.internal.pageSize.getHeight() - 6,
-        { align: "center" }
+        `Hadir: ${totalHadir}  |  Terlambat: ${totalTerlambat}  |  Izin: ${totalIzin}  |  Sakit: ${totalSakit}  |  Alpha: ${totalAlpha}  |  Total Data: ${filtered.length}`,
+        14, 41
       );
-    }
 
-    doc.save(`Laporan_Absensi_MCC_${filterMonth}.pdf`);
-    setExportSuccess("✅ File PDF berhasil diunduh!");
+      // ── Tabel Data Absensi ────────────────────────────────
+      const head = [["No", "Nama Karyawan", "Departemen", "Posisi", "Tanggal", "Jam Masuk", "Jam Pulang", "Status", "Jam Kerja"]];
+      const body = filtered.map((r, i) => [
+        i + 1,
+        r.userName || "-",
+        r.department || "-",
+        r.position || "-",
+        r.date,
+        r.checkIn || "-",
+        r.checkOut || "-",
+        r.status ? r.status.charAt(0).toUpperCase() + r.status.slice(1) : "-",
+        r.workHours ? `${Number(r.workHours).toFixed(1)} jam` : "-",
+      ]);
+
+      autoTable(doc, {
+        startY: 46,
+        head,
+        body,
+        headStyles: {
+          fillColor: [30, 50, 99],
+          textColor: 255,
+          fontSize: 8,
+          fontStyle: "bold",
+        },
+        bodyStyles: { fontSize: 7.5, textColor: [40, 40, 40] },
+        alternateRowStyles: { fillColor: [245, 247, 255] },
+        columnStyles: {
+          0: { cellWidth: 10, halign: "center" },
+          7: { halign: "center" },
+          8: { halign: "center" },
+        },
+        margin: { left: 10, right: 10 },
+      });
+
+      // ── Footer ─────────────────────────────────────────────
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150);
+        doc.text(
+          `Dicetak pada: ${new Date().toLocaleDateString("id-ID")} — Halaman ${i} dari ${totalPages}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 6,
+          { align: "center" }
+        );
+      }
+
+      doc.save(`Laporan_Absensi_MCC_${filterMonth}.pdf`);
+      setExportSuccess("✅ File PDF berhasil diunduh!");
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      alert("Gagal membuat PDF. Cek console untuk detail error.");
+    }
     setTimeout(() => setExportSuccess(""), 3000);
   };
 
